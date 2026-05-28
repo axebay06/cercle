@@ -266,8 +266,26 @@ const EditProfileScreen = ({ profile, onSave, onBack }) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => set("photo", ev.target.result);
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxSize = 400;
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxSize) { height = (height * maxSize) / width; width = maxSize; }
+        } else {
+          if (height > maxSize) { width = (width * maxSize) / height; height = maxSize; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        set("photo", canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.src = ev.target.result;
+    };
     reader.readAsDataURL(file);
+  };
   };
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
@@ -296,7 +314,6 @@ const EditProfileScreen = ({ profile, onSave, onBack }) => {
       </div>
     </div>
   );
-};
 
 const ProfileScreen = ({ events, profile, onEdit, user, myUid }) => {
   const memories = events.filter(e => e.ended && (e.organizer === myUid || (e.participants || []).includes(myUid)));
@@ -358,8 +375,23 @@ const EventDetail = ({ ev, onBack, onAction, myUid }) => {
     setUploading(true);
     const reader = new FileReader();
     reader.onload = ev2 => {
-      onAction("photo", ev.id, ev2.target.result);
-      setUploading(false);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxSize = 800;
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxSize) { height = (height * maxSize) / width; width = maxSize; }
+        } else {
+          if (height > maxSize) { width = (width * maxSize) / height; height = maxSize; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        onAction("photo", ev.id, canvas.toDataURL("image/jpeg", 0.75));
+        setUploading(false);
+      };
+      img.src = ev2.target.result;
     };
     reader.onerror = () => setUploading(false);
     reader.readAsDataURL(file);

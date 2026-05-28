@@ -23,17 +23,33 @@ export function useProfile(user) {
     });
   }, [user]);
 
- const saveProfile = async (data) => {
-  if (!user) return;
-  // Sépare la photo du reste pour éviter les limites Firestore
-  const { photo, ...rest } = data;
-  const toSave = { ...rest, uid: user.uid };
-  if (photo && photo.length < 900000) toSave.photo = photo; // max ~900KB
-  await setDoc(doc(db, "users", user.uid), toSave, { merge: true });
-  setProfile({ ...data });
-};
+  const saveProfile = async (data) => {
+    if (!user) return;
+    const { photo, ...rest } = data;
+    const toSave = { ...rest, uid: user.uid };
+    if (photo && photo.length < 900000) toSave.photo = photo;
+    await setDoc(doc(db, "users", user.uid), toSave, { merge: true });
+    setProfile({ ...data });
+  };
 
   return [profile, saveProfile];
+}
+
+// ── Profil d'un autre utilisateur ───────────────────────────────
+export function useUserProfile(uid) {
+  const [userProfile, setUserProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!uid) return;
+    setLoading(true);
+    getDoc(doc(db, "users", uid)).then(snap => {
+      setUserProfile(snap.exists() ? snap.data() : null);
+      setLoading(false);
+    });
+  }, [uid]);
+
+  return [userProfile, loading];
 }
 
 // ── Events ──────────────────────────────────────────────────────
@@ -43,7 +59,25 @@ export function useEvents(user) {
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(collection(db, "events"), snap => {
-      const evs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const now = new Date();
+      const evs = snap.docs.map(d => {
+        const data = { id: d.id, ...d.data() };
+        // Auto-marquer comme terminé si la date est passée
+        if (data.dateISO && !data.ended) {
+          const eventDate = new Date(data.dateISO);
+          if (eventDate < now) {
+            updateDoc(doc(db, "events", d.id), { ended: true });
+            data.ended = true;
+          }
+        }
+        return data;
+      });
+      // Trier par date — les plus proches en premier
+      evs.sort((a, b) => {
+        if (!a.dateISO) return 1;
+        if (!b.dateISO) return -1;
+        return new Date(a.dateISO) - new Date(b.dateISO);
+      });
       setEvents(evs);
     });
     return unsub;
@@ -53,7 +87,7 @@ export function useEvents(user) {
     await addDoc(collection(db, "events"), {
       ...form,
       organizer: user.uid,
-      organizerName: user.displayName,
+      organizerName: user.displayName || "Utilisateur",
       participants: [user.uid],
       requests: [],
       photos: [],

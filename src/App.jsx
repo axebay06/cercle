@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "./firebase";
-import { useProfile, useEvents, useMessages, useFriends } from "./useFirestore";
-
+import { useProfile, useEvents, useMessages, useFriends, useUserProfile } from "./useFirestore";
 const C = {
   bg: "#0d0d15", surface: "#111118", card: "#18182a", cardBorder: "#28283e",
   accent: "#7b6fe8", accentLight: "#8b7ef8", accentDim: "#1e1e40",
@@ -144,16 +143,31 @@ const MyEventsScreen = ({ events, onOpen, myUid }) => {
   );
 };
 
+// ── Remplace CreateScreen ────────────────────────────────────────
 const CreateScreen = ({ onCreate, onBack }) => {
-  const [form, setForm] = useState({ title: "", date: "", time: "", location: "", maxSpots: 4 });
+  const [form, setForm] = useState({ title: "", dateISO: "", time: "", location: "", maxSpots: 4 });
   const [emoji, setEmoji] = useState("🎉");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const emojis = ["🎳", "🌿", "🔐", "🍕", "🎬", "🏃", "🎮", "🎉", "🍻", "🌆"];
+
+  // Formate la date ISO en français pour l'affichage
+  const formatDateFR = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" });
+  };
+
   const submit = () => {
-    if (!form.title || !form.date || !form.location) return alert("Remplis au moins le titre, la date et le lieu !");
-    onCreate({ ...form, emoji, title: `${form.title} ${emoji}` });
+    if (!form.title || !form.dateISO || !form.location) return alert("Remplis au moins le titre, la date et le lieu !");
+    onCreate({
+      ...form,
+      emoji,
+      title: `${form.title} ${emoji}`,
+      date: formatDateFR(form.dateISO), // version lisible en français
+    });
     onBack();
   };
+
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div style={s.header}>
@@ -167,18 +181,98 @@ const CreateScreen = ({ onCreate, onBack }) => {
             {emojis.map(e => <button key={e} onClick={() => setEmoji(e)} style={{ fontSize: 20, background: emoji === e ? C.accentDim : "#18182a", border: `0.5px solid ${emoji === e ? C.accent : C.cardBorder}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>{e}</button>)}
           </div>
         </div>
-        {[["Titre", "title", "Ex: Soirée bowling..."], ["Date", "date", "Ex: Sam 31 mai"], ["Heure", "time", "Ex: 20h00"], ["Lieu", "location", "Ex: Paris 11e"]].map(([label, key, ph]) => (
-          <div key={key} style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: C.textDim }}>{label}</div>
-            <input value={form[key]} onChange={e => set(key, e.target.value)} placeholder={ph} style={s.inp} />
-          </div>
-        ))}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: C.textDim }}>Titre</div>
+          <input value={form.title} onChange={e => set("title", e.target.value)} placeholder="Ex: Soirée bowling..." style={s.inp} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: C.textDim }}>Date</div>
+          <input type="date" value={form.dateISO} onChange={e => set("dateISO", e.target.value)}
+            min={new Date().toISOString().split("T")[0]}
+            style={{ ...s.inp, colorScheme: "dark" }} />
+          {form.dateISO && <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>📅 {formatDateFR(form.dateISO)}</div>}
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: C.textDim }}>Heure</div>
+          <input type="time" value={form.time} onChange={e => set("time", e.target.value)}
+            style={{ ...s.inp, colorScheme: "dark" }} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: C.textDim }}>Lieu</div>
+          <input value={form.location} onChange={e => set("location", e.target.value)} placeholder="Ex: Paris 11e..." style={s.inp} />
+        </div>
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Places max : <span style={{ color: C.accent, fontWeight: 600 }}>{form.maxSpots}</span></div>
           <input type="range" min={2} max={20} value={form.maxSpots} onChange={e => set("maxSpots", Number(e.target.value))} style={{ width: "100%", accentColor: C.accent }} />
         </div>
         <Btn onClick={submit}>Ouvrir le cercle 🎯</Btn>
       </div>
+    </div>
+  );
+};
+
+// ── Ajoute UserProfileScreen ─────────────────────────────────────
+const UserProfileScreen = ({ uid, onBack, myUid, onAddFriend, friends, events }) => {
+  const [userProfile, loading] = useUserProfile(uid);
+  const isFriend = friends.includes(uid);
+  const commonEvents = events.filter(e =>
+    (e.participants || []).includes(uid) && (e.participants || []).includes(myUid)
+  );
+
+  if (loading) return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ color: C.accent, fontSize: 28 }}>◎</span>
+    </div>
+  );
+
+  if (!userProfile) return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={s.header}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
+        <span style={{ fontSize: 15, color: C.text }}>Profil introuvable</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={s.header}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
+        <span style={{ fontSize: 14, fontWeight: 500, color: C.text }}>{userProfile.name}</span>
+      </div>
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        {userProfile.photo
+          ? <img src={userProfile.photo} alt="" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: `2px solid ${C.accent}` }} />
+          : <div style={{ width: 80, height: 80, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 600 }}>
+              {(userProfile.name || "?").slice(0, 2).toUpperCase()}
+            </div>}
+        <div style={{ fontSize: 18, fontWeight: 600, color: C.text }}>{userProfile.name}</div>
+        {userProfile.city && <div style={{ fontSize: 13, color: C.textDim }}>📍 {userProfile.city}</div>}
+        {userProfile.bio && <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>{userProfile.bio}</div>}
+        <div style={{ display: "flex", gap: 24, marginTop: 8 }}>
+          {[[commonEvents.length.toString(), "Cercles en commun"]].map(([n, l]) => (
+            <div key={l} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 20, fontWeight: 600, color: C.accent }}>{n}</div>
+              <div style={{ fontSize: 11, color: C.textDim }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ padding: "0 16px 12px" }}>
+        {uid !== myUid && !isFriend && (
+          <Btn onClick={() => { onAddFriend(uid); onBack(); }}>+ Ajouter à mon cercle</Btn>
+        )}
+        {isFriend && <Btn variant="ghost">✓ Dans ton cercle</Btn>}
+      </div>
+      {commonEvents.length > 0 && <>
+        <div style={s.sectionLabel}>Cercles en commun</div>
+        {commonEvents.map(ev => (
+          <div key={ev.id} style={{ margin: "6px 12px", borderRadius: 10, background: C.card, border: `0.5px solid ${C.cardBorder}`, padding: "10px 12px" }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{ev.title}</div>
+            <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>📅 {ev.date}</div>
+          </div>
+        ))}
+      </>}
     </div>
   );
 };
@@ -500,7 +594,7 @@ export default function App({ user }) {
   const [prevTab, setPrevTab] = useState("feed");
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState({});
-
+const [viewingUid, setViewingUid] = useState(null);
   const [profile, saveProfile] = useProfile(user);
   const { events, createEvent, requestJoin, acceptRequest, declineRequest, addPhoto } = useEvents(user);
   const { friends, addFriend } = useFriends(user);

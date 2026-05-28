@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "./firebase";
 import { useProfile, useEvents, useMessages, useFriends, useUserProfile } from "./useFirestore";
+
 const C = {
   bg: "#0d0d15", surface: "#111118", card: "#18182a", cardBorder: "#28283e",
   accent: "#7b6fe8", accentLight: "#8b7ef8", accentDim: "#1e1e40",
@@ -27,11 +28,11 @@ const s = {
   inp: { background: "#18182a", border: `0.5px solid #28283e`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#e0dff5", width: "100%", outline: "none", marginTop: 4 },
 };
 
-const Avatar = ({ user, size = 32, photo }) => (
-  photo
-    ? <img src={photo} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-    : <div style={{ width: size, height: size, borderRadius: "50%", background: user?.bg || C.accentDim, color: user?.color || C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.35, fontWeight: 500, flexShrink: 0 }}>{user?.initials || "?"}</div>
-);
+const formatDateFR = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" });
+};
 
 const Badge = ({ children, color = C.accent, bg = C.accentDim }) => (
   <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 6, background: bg, color, display: "inline-block" }}>{children}</span>
@@ -61,6 +62,17 @@ const Logo = () => (
     <span style={{ color: C.accent }}>◎</span><span style={{ color: C.text }}> Cercle</span>
   </span>
 );
+
+const UserAvatar = ({ uid, profile, size = 32, onClick }) => {
+  const initials = (profile?.name || uid || "?").slice(0, 2).toUpperCase();
+  return (
+    <div onClick={onClick} style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, cursor: onClick ? "pointer" : "default", overflow: "hidden", background: C.accentDim, border: onClick ? `1.5px solid ${C.accent}` : "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {profile?.photo
+        ? <img src={profile.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        : <span style={{ fontSize: size * 0.35, fontWeight: 500, color: C.accent }}>{initials}</span>}
+    </div>
+  );
+};
 
 const BottomNav = ({ tab, setTab }) => {
   const items = [
@@ -94,17 +106,17 @@ const EventCard = ({ ev, onOpen, myUid }) => {
     <div onClick={() => onOpen(ev)} style={s.card}>
       <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 3 }}>{ev.title}</div>
       <div style={{ fontSize: 11, color: C.textDim, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <span>📅 {ev.date} · {ev.time}</span>
+        <span>📅 {ev.date || formatDateFR(ev.dateISO)} · {ev.time}</span>
         <span>📍 {ev.location}</span>
       </div>
       <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
         {ev.ended
-          ? <Badge color={C.textDim} bg="#1a1a28">Terminé · {(ev.photos||[]).length} souvenir{(ev.photos||[]).length > 1 ? "s" : ""}</Badge>
+          ? <Badge color={C.textDim} bg="#1a1a28">Terminé · {(ev.photos || []).length} souvenir{(ev.photos || []).length > 1 ? "s" : ""}</Badge>
           : isOrganizer ? <Badge>Ton cercle</Badge>
           : isParticipant ? <Badge color={C.success} bg={C.successDim}>Tu participes ✓</Badge>
           : hasRequested ? <Badge color={C.textMuted} bg="#1e1e30">Demande envoyée…</Badge>
           : isFull ? <Badge color={C.danger} bg={C.dangerDim}>Complet</Badge>
-          : <Badge>{ev.mutualFriends || 0} ami{(ev.mutualFriends||0) > 1 ? "s" : ""} en commun</Badge>}
+          : <Badge>{ev.mutualFriends || 0} ami{(ev.mutualFriends || 0) > 1 ? "s" : ""} en commun</Badge>}
       </div>
       {!ev.ended && <SpotDots filled={participants.length} total={ev.maxSpots} />}
     </div>
@@ -125,49 +137,32 @@ const FeedScreen = ({ events, onOpen, profile, myUid }) => (
 
 const MyEventsScreen = ({ events, onOpen, myUid }) => {
   const mine = events.filter(e => e.organizer === myUid || (e.participants || []).includes(myUid));
-  const upcoming = mine.filter(e => !e.ended);
-  const past = mine.filter(e => e.ended);
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div style={{ ...s.header, justifyContent: "space-between" }}><Logo /></div>
-      {upcoming.length > 0 && <>
+      {mine.filter(e => !e.ended).length > 0 && <>
         <div style={s.sectionLabel}>À venir</div>
-        {upcoming.map(ev => <EventCard key={ev.id} ev={ev} onOpen={onOpen} myUid={myUid} />)}
+        {mine.filter(e => !e.ended).map(ev => <EventCard key={ev.id} ev={ev} onOpen={onOpen} myUid={myUid} />)}
       </>}
-      {past.length > 0 && <>
+      {mine.filter(e => e.ended).length > 0 && <>
         <div style={{ ...s.sectionLabel, color: C.textDim }}>Passés · Mémoires</div>
-        {past.map(ev => <EventCard key={ev.id} ev={ev} onOpen={onOpen} myUid={myUid} />)}
+        {mine.filter(e => e.ended).map(ev => <EventCard key={ev.id} ev={ev} onOpen={onOpen} myUid={myUid} />)}
       </>}
       {mine.length === 0 && <div style={{ padding: 24, textAlign: "center", color: C.textDim, fontSize: 13 }}>Tu n'as pas encore de cercle.<br />Crée-en un ou rejoins celui d'un ami !</div>}
     </div>
   );
 };
 
-// ── Remplace CreateScreen ────────────────────────────────────────
 const CreateScreen = ({ onCreate, onBack }) => {
   const [form, setForm] = useState({ title: "", dateISO: "", time: "", location: "", maxSpots: 4 });
   const [emoji, setEmoji] = useState("🎉");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const emojis = ["🎳", "🌿", "🔐", "🍕", "🎬", "🏃", "🎮", "🎉", "🍻", "🌆"];
-
-  // Formate la date ISO en français pour l'affichage
-  const formatDateFR = (iso) => {
-    if (!iso) return "";
-    const d = new Date(iso);
-    return d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" });
-  };
-
   const submit = () => {
     if (!form.title || !form.dateISO || !form.location) return alert("Remplis au moins le titre, la date et le lieu !");
-    onCreate({
-      ...form,
-      emoji,
-      title: `${form.title} ${emoji}`,
-      date: formatDateFR(form.dateISO), // version lisible en français
-    });
+    onCreate({ ...form, emoji, title: `${form.title} ${emoji}`, date: formatDateFR(form.dateISO) });
     onBack();
   };
-
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div style={s.header}>
@@ -187,15 +182,12 @@ const CreateScreen = ({ onCreate, onBack }) => {
         </div>
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: C.textDim }}>Date</div>
-          <input type="date" value={form.dateISO} onChange={e => set("dateISO", e.target.value)}
-            min={new Date().toISOString().split("T")[0]}
-            style={{ ...s.inp, colorScheme: "dark" }} />
+          <input type="date" value={form.dateISO} onChange={e => set("dateISO", e.target.value)} min={new Date().toISOString().split("T")[0]} style={{ ...s.inp, colorScheme: "dark" }} />
           {form.dateISO && <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>📅 {formatDateFR(form.dateISO)}</div>}
         </div>
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: C.textDim }}>Heure</div>
-          <input type="time" value={form.time} onChange={e => set("time", e.target.value)}
-            style={{ ...s.inp, colorScheme: "dark" }} />
+          <input type="time" value={form.time} onChange={e => set("time", e.target.value)} style={{ ...s.inp, colorScheme: "dark" }} />
         </div>
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: C.textDim }}>Lieu</div>
@@ -211,93 +203,23 @@ const CreateScreen = ({ onCreate, onBack }) => {
   );
 };
 
-// ── Ajoute UserProfileScreen ─────────────────────────────────────
-const UserProfileScreen = ({ uid, onBack, myUid, onAddFriend, friends, events }) => {
-  const [userProfile, loading] = useUserProfile(uid);
-  const isFriend = friends.includes(uid);
-  const commonEvents = events.filter(e =>
-    (e.participants || []).includes(uid) && (e.participants || []).includes(myUid)
-  );
-
-  if (loading) return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <span style={{ color: C.accent, fontSize: 28 }}>◎</span>
-    </div>
-  );
-
-  if (!userProfile) return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      <div style={s.header}>
-        <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
-        <span style={{ fontSize: 15, color: C.text }}>Profil introuvable</span>
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{ flex: 1, overflowY: "auto" }}>
-      <div style={s.header}>
-        <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
-        <span style={{ fontSize: 14, fontWeight: 500, color: C.text }}>{userProfile.name}</span>
-      </div>
-      <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        {userProfile.photo
-          ? <img src={userProfile.photo} alt="" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: `2px solid ${C.accent}` }} />
-          : <div style={{ width: 80, height: 80, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 600 }}>
-              {(userProfile.name || "?").slice(0, 2).toUpperCase()}
-            </div>}
-        <div style={{ fontSize: 18, fontWeight: 600, color: C.text }}>{userProfile.name}</div>
-        {userProfile.city && <div style={{ fontSize: 13, color: C.textDim }}>📍 {userProfile.city}</div>}
-        {userProfile.bio && <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>{userProfile.bio}</div>}
-        <div style={{ display: "flex", gap: 24, marginTop: 8 }}>
-          {[[commonEvents.length.toString(), "Cercles en commun"]].map(([n, l]) => (
-            <div key={l} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 20, fontWeight: 600, color: C.accent }}>{n}</div>
-              <div style={{ fontSize: 11, color: C.textDim }}>{l}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div style={{ padding: "0 16px 12px" }}>
-        {uid !== myUid && !isFriend && (
-          <Btn onClick={() => { onAddFriend(uid); onBack(); }}>+ Ajouter à mon cercle</Btn>
-        )}
-        {isFriend && <Btn variant="ghost">✓ Dans ton cercle</Btn>}
-      </div>
-      {commonEvents.length > 0 && <>
-        <div style={s.sectionLabel}>Cercles en commun</div>
-        {commonEvents.map(ev => (
-          <div key={ev.id} style={{ margin: "6px 12px", borderRadius: 10, background: C.card, border: `0.5px solid ${C.cardBorder}`, padding: "10px 12px" }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{ev.title}</div>
-            <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>📅 {ev.date}</div>
-          </div>
-        ))}
-      </>}
-    </div>
-  );
-};
-
 const FriendsScreen = ({ onOpenConv, messages, friends, onAddFriend }) => (
   <div style={{ flex: 1, overflowY: "auto" }}>
-    <div style={{ ...s.header, justifyContent: "space-between" }}>
-      <Logo />
-      <span style={{ fontSize: 11, color: C.textDim }}>Messages</span>
-    </div>
+    <div style={{ ...s.header, justifyContent: "space-between" }}><Logo /><span style={{ fontSize: 11, color: C.textDim }}>Messages</span></div>
     <div style={s.sectionLabel}>Amis · {friends.length}</div>
     {friends.map(id => {
       const msgs = messages[id] || [];
       const last = msgs[msgs.length - 1];
-      const initials = id.slice(0, 2).toUpperCase();
       return (
         <div key={id} onClick={() => onOpenConv(id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `0.5px solid ${C.divider}`, cursor: "pointer" }}>
-          <div style={{ width: 42, height: 42, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 500 }}>{initials}</div>
+          <div style={{ width: 42, height: 42, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 500 }}>{id.slice(0, 2).toUpperCase()}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{id}</div>
             <div style={{ fontSize: 11, color: C.textDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {last ? (last.from === "me" ? `Toi : ${last.text}` : last.text) : "Commencer une conversation"}
             </div>
           </div>
-          {last && <span style={{ fontSize: 10, color: C.textDim, flexShrink: 0 }}>{last.time}</span>}
+          {last && <span style={{ fontSize: 10, color: C.textDim }}>{last.time}</span>}
         </div>
       );
     })}
@@ -317,11 +239,7 @@ const FriendsScreen = ({ onOpenConv, messages, friends, onAddFriend }) => (
 
 const ConversationScreen = ({ friendId, onBack, messages, onSend }) => {
   const [input, setInput] = useState("");
-  const send = () => {
-    if (!input.trim()) return;
-    onSend(friendId, input.trim());
-    setInput("");
-  };
+  const send = () => { if (!input.trim()) return; onSend(friendId, input.trim()); setInput(""); };
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={s.header}>
@@ -332,7 +250,7 @@ const ConversationScreen = ({ friendId, onBack, messages, onSend }) => {
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-        {messages.length === 0 && <div style={{ textAlign: "center", color: C.textDim, fontSize: 12, marginTop: 40 }}>Début de ta conversation 👋</div>}
+        {messages.length === 0 && <div style={{ textAlign: "center", color: C.textDim, fontSize: 12, marginTop: 40 }}>Début de la conversation 👋</div>}
         {messages.map((msg, i) => {
           const isMe = msg.from === "me";
           return (
@@ -380,7 +298,6 @@ const EditProfileScreen = ({ profile, onSave, onBack }) => {
     };
     reader.readAsDataURL(file);
   };
-  };
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div style={s.header}>
@@ -408,6 +325,7 @@ const EditProfileScreen = ({ profile, onSave, onBack }) => {
       </div>
     </div>
   );
+};
 
 const ProfileScreen = ({ events, profile, onEdit, user, myUid }) => {
   const memories = events.filter(e => e.ended && (e.organizer === myUid || (e.participants || []).includes(myUid)));
@@ -416,13 +334,16 @@ const ProfileScreen = ({ events, profile, onEdit, user, myUid }) => {
       <div style={{ ...s.header, justifyContent: "space-between" }}><Logo /></div>
       <div style={{ padding: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
         {(profile?.photo || user?.photoURL)
-  ? <img src={profile?.photo ?? user?.photoURL} alt="" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: `2px solid ${C.accent}` }} />
-  : <div style={{ width: 72, height: 72, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 600 }}>AX</div>}
+          ? <img src={profile?.photo ?? user?.photoURL} alt="" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: `2px solid ${C.accent}` }} />
+          : <div style={{ width: 72, height: 72, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 600 }}>AX</div>}
         <div style={{ fontSize: 17, fontWeight: 500, color: C.text }}>{profile?.name || user?.displayName}</div>
         {profile?.city && <div style={{ fontSize: 12, color: C.textDim }}>📍 {profile.city}</div>}
         {profile?.bio && <div style={{ fontSize: 12, color: C.textMuted, textAlign: "center", maxWidth: 260 }}>{profile.bio}</div>}
         <div style={{ display: "flex", gap: 24, marginTop: 8 }}>
-          {[["—", "Amis"], [events.filter(e => (e.participants||[]).includes(myUid) || e.organizer === myUid).length.toString(), "Cercles"], [memories.length.toString(), "Mémoires"]].map(([n, l]) => (
+          {[
+            [events.filter(e => (e.participants || []).includes(myUid) || e.organizer === myUid).length.toString(), "Cercles"],
+            [memories.length.toString(), "Mémoires"]
+          ].map(([n, l]) => (
             <div key={l} style={{ textAlign: "center" }}>
               <div style={{ fontSize: 18, fontWeight: 500, color: C.accent }}>{n}</div>
               <div style={{ fontSize: 11, color: C.textDim }}>{l}</div>
@@ -441,15 +362,73 @@ const ProfileScreen = ({ events, profile, onEdit, user, myUid }) => {
         <div key={ev.id} style={{ margin: "8px 12px", borderRadius: 12, background: C.card, border: `0.5px solid ${C.cardBorder}`, padding: 12 }}>
           <div style={{ fontSize: 20, marginBottom: 6 }}>{ev.emoji}</div>
           <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{ev.title}</div>
-          <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{ev.date} · {(ev.participants||[]).length} personnes</div>
-          {(ev.photos||[]).length > 0 && <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>{ev.photos.length} souvenir{ev.photos.length > 1 ? "s" : ""}</div>}
+          <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{ev.date || formatDateFR(ev.dateISO)} · {(ev.participants || []).length} personnes</div>
+          {(ev.photos || []).length > 0 && <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>{ev.photos.length} souvenir{ev.photos.length > 1 ? "s" : ""}</div>}
         </div>
       ))}
     </div>
   );
 };
 
-const EventDetail = ({ ev, onBack, onAction, myUid }) => {
+const UserProfileScreen = ({ uid, onBack, myUid, onAddFriend, friends, events }) => {
+  const [userProfile, loading] = useUserProfile(uid);
+  const isFriend = friends.includes(uid);
+  const commonEvents = events.filter(e => (e.participants || []).includes(uid) && (e.participants || []).includes(myUid));
+
+  if (loading) return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ color: C.accent, fontSize: 28 }}>◎</span>
+    </div>
+  );
+
+  if (!userProfile) return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={s.header}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
+        <span style={{ fontSize: 15, color: C.text }}>Profil introuvable</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={s.header}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
+        <span style={{ fontSize: 14, fontWeight: 500, color: C.text }}>{userProfile.name}</span>
+      </div>
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        {userProfile.photo
+          ? <img src={userProfile.photo} alt="" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: `2px solid ${C.accent}` }} />
+          : <div style={{ width: 80, height: 80, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 600 }}>
+              {(userProfile.name || "?").slice(0, 2).toUpperCase()}
+            </div>}
+        <div style={{ fontSize: 18, fontWeight: 600, color: C.text }}>{userProfile.name}</div>
+        {userProfile.city && <div style={{ fontSize: 13, color: C.textDim }}>📍 {userProfile.city}</div>}
+        {userProfile.bio && <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>{userProfile.bio}</div>}
+        <div style={{ textAlign: "center", marginTop: 8 }}>
+          <div style={{ fontSize: 20, fontWeight: 600, color: C.accent }}>{commonEvents.length}</div>
+          <div style={{ fontSize: 11, color: C.textDim }}>Cercle{commonEvents.length > 1 ? "s" : ""} en commun</div>
+        </div>
+      </div>
+      <div style={{ padding: "0 16px 12px" }}>
+        {uid !== myUid && !isFriend
+          ? <Btn onClick={() => { onAddFriend(uid); onBack(); }}>+ Ajouter à mon cercle</Btn>
+          : <Btn variant="ghost">✓ Dans ton cercle</Btn>}
+      </div>
+      {commonEvents.length > 0 && <>
+        <div style={s.sectionLabel}>Cercles en commun</div>
+        {commonEvents.map(ev => (
+          <div key={ev.id} style={{ margin: "6px 12px", borderRadius: 10, background: C.card, border: `0.5px solid ${C.cardBorder}`, padding: "10px 12px" }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: C.text }}>{ev.title}</div>
+            <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>📅 {ev.date || formatDateFR(ev.dateISO)}</div>
+          </div>
+        ))}
+      </>}
+    </div>
+  );
+};
+
+const EventDetail = ({ ev, onBack, onAction, myUid, onViewProfile }) => {
   const participants = ev.participants || [];
   const requests = ev.requests || [];
   const photos = ev.photos || [];
@@ -459,9 +438,7 @@ const EventDetail = ({ ev, onBack, onAction, myUid }) => {
   const isOrganizer = ev.organizer === myUid;
   const [uploading, setUploading] = useState(false);
 
-  const getName = uid => uid === myUid ? "Toi" : uid.slice(0, 8) + "...";
-
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = e => {
     const file = e.target.files[0];
     if (!file) return;
     setUploading(true);
@@ -497,7 +474,7 @@ const EventDetail = ({ ev, onBack, onAction, myUid }) => {
         <div style={{ fontSize: 14, fontWeight: 500, color: C.text, flex: 1 }}>{ev.title}</div>
       </div>
       <div style={{ padding: "10px 16px 0" }}>
-        {[["📅", `${ev.date} · ${ev.time}`], ["📍", ev.location], ["👥", `${participants.length} / ${ev.maxSpots} participants`], ["👤", `Cercle de ${ev.organizerName || "..."}`]].map(([icon, text]) => (
+        {[["📅", `${ev.date || formatDateFR(ev.dateISO)} · ${ev.time}`], ["📍", ev.location], ["👥", `${participants.length} / ${ev.maxSpots} participants`], ["👤", `Cercle de ${ev.organizerName || "..."}`]].map(([icon, text]) => (
           <div key={text} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
             <span>{icon}</span><span style={{ fontSize: 12, color: C.textMuted }}>{text}</span>
           </div>
@@ -507,13 +484,17 @@ const EventDetail = ({ ev, onBack, onAction, myUid }) => {
       <div style={{ padding: "0 16px 8px" }}>
         <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8 }}>Dans le cercle</div>
         {participants.map(pid => (
-          <div key={pid} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <div key={pid} onClick={() => pid !== myUid && onViewProfile(pid)}
+            style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, cursor: pid !== myUid ? "pointer" : "default", padding: "4px 6px", borderRadius: 8, background: pid !== myUid ? "transparent" : "transparent" }}
+            onMouseEnter={e => { if (pid !== myUid) e.currentTarget.style.background = C.card; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 500 }}>
-              {getName(pid).slice(0, 2).toUpperCase()}
+              {pid === myUid ? "Toi".slice(0, 2) : pid.slice(0, 2).toUpperCase()}
             </div>
-            <span style={{ fontSize: 12, color: C.textMuted, flex: 1 }}>{getName(pid)}</span>
+            <span style={{ fontSize: 12, color: C.textMuted, flex: 1 }}>{pid === myUid ? "Toi" : "Membre"}</span>
             {pid === ev.organizer && <Badge>Créateur</Badge>}
             {pid === myUid && pid !== ev.organizer && <Badge color={C.success} bg={C.successDim}>Toi</Badge>}
+            {pid !== myUid && <span style={{ fontSize: 10, color: C.textDim }}>→</span>}
           </div>
         ))}
       </div>
@@ -528,7 +509,7 @@ const EventDetail = ({ ev, onBack, onAction, myUid }) => {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{pid.slice(0, 2).toUpperCase()}</div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{pid.slice(0, 12)}...</div>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: C.text, cursor: "pointer" }} onClick={() => onViewProfile(pid)}>Voir le profil →</div>
                     <div style={{ fontSize: 10, color: C.textDim }}>Demande à rejoindre</div>
                   </div>
                 </div>
@@ -594,7 +575,8 @@ export default function App({ user }) {
   const [prevTab, setPrevTab] = useState("feed");
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState({});
-const [viewingUid, setViewingUid] = useState(null);
+  const [viewingUid, setViewingUid] = useState(null);
+
   const [profile, saveProfile] = useProfile(user);
   const { events, createEvent, requestJoin, acceptRequest, declineRequest, addPhoto } = useEvents(user);
   const { friends, addFriend } = useFriends(user);
@@ -606,7 +588,6 @@ const [viewingUid, setViewingUid] = useState(null);
     if (type === "accept") await acceptRequest(evId, payload);
     if (type === "decline") await declineRequest(evId, payload);
     if (type === "photo") await addPhoto(evId, payload);
-    // Mise à jour locale immédiate pour éviter le reset visuel
     setSelected(prev => {
       if (!prev || prev.id !== evId) return prev;
       if (type === "request") return { ...prev, requests: [...(prev.requests || []), payload] };
@@ -625,6 +606,8 @@ const [viewingUid, setViewingUid] = useState(null);
 
   const openConv = id => { setActiveConv(id); setTab("conv"); };
 
+  const viewProfile = uid => { setPrevTab(tab); setViewingUid(uid); setTab("userprofile"); };
+
   if (!profile) return (
     <div style={{ background: "#0d0d15", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <span style={{ color: "#7b6fe8", fontSize: 32 }}>◎</span>
@@ -637,8 +620,10 @@ const [viewingUid, setViewingUid] = useState(null);
         ? <ConversationScreen friendId={activeConv} onBack={() => { setTab("friends"); setActiveConv(null); }} messages={messages[activeConv] || []} onSend={handleSend} />
         : tab === "editprofile"
         ? <EditProfileScreen profile={profile} onSave={saveProfile} onBack={() => setTab("profile")} />
+        : tab === "userprofile" && viewingUid
+        ? <UserProfileScreen uid={viewingUid} onBack={() => { setTab(prevTab); setViewingUid(null); }} myUid={user.uid} onAddFriend={addFriend} friends={friends} events={events} />
         : tab === "detail" && selected
-        ? <EventDetail ev={selected} onBack={() => { setTab(prevTab); setSelected(null); }} onAction={handleAction} myUid={user.uid} />
+        ? <EventDetail ev={selected} onBack={() => { setTab(prevTab); setSelected(null); }} onAction={handleAction} myUid={user.uid} onViewProfile={viewProfile} />
         : tab === "create"
         ? <CreateScreen onCreate={createEvent} onBack={() => setTab("feed")} />
         : <>
@@ -647,7 +632,7 @@ const [viewingUid, setViewingUid] = useState(null);
           {tab === "friends" && <FriendsScreen onOpenConv={openConv} messages={messages} friends={friends} onAddFriend={addFriend} />}
           {tab === "profile" && <ProfileScreen events={events} profile={profile} onEdit={() => setTab("editprofile")} user={user} myUid={user.uid} />}
         </>}
-      {!["detail", "create", "conv", "editprofile"].includes(tab) && <BottomNav tab={tab} setTab={setTab} />}
+      {!["detail", "create", "conv", "editprofile", "userprofile"].includes(tab) && <BottomNav tab={tab} setTab={setTab} />}
     </div>
   );
 }

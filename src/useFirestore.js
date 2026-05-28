@@ -23,11 +23,15 @@ export function useProfile(user) {
     });
   }, [user]);
 
-  const saveProfile = async (data) => {
-    if (!user) return;
-    await setDoc(doc(db, "users", user.uid), { ...data, uid: user.uid }, { merge: true });
-    setProfile(data);
-  };
+ const saveProfile = async (data) => {
+  if (!user) return;
+  // Sépare la photo du reste pour éviter les limites Firestore
+  const { photo, ...rest } = data;
+  const toSave = { ...rest, uid: user.uid };
+  if (photo && photo.length < 900000) toSave.photo = photo; // max ~900KB
+  await setDoc(doc(db, "users", user.uid), toSave, { merge: true });
+  setProfile({ ...data });
+};
 
   return [profile, saveProfile];
 }

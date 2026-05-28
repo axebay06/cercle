@@ -321,11 +321,9 @@ const ProfileScreen = ({ events, profile, onEdit, user, myUid }) => {
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div style={{ ...s.header, justifyContent: "space-between" }}><Logo /></div>
       <div style={{ padding: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-        {profile?.photo
-          ? <img src={profile.photo} alt="" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: `2px solid ${C.accent}` }} />
-          : user?.photoURL
-          ? <img src={user.photoURL} alt="" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: `2px solid ${C.accent}` }} />
-          : <div style={{ width: 72, height: 72, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 600 }}>AX</div>}
+        {(profile?.photo || user?.photoURL)
+  ? <img src={profile?.photo ?? user?.photoURL} alt="" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: `2px solid ${C.accent}` }} />
+  : <div style={{ width: 72, height: 72, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 600 }}>AX</div>}
         <div style={{ fontSize: 17, fontWeight: 500, color: C.text }}>{profile?.name || user?.displayName}</div>
         {profile?.city && <div style={{ fontSize: 12, color: C.textDim }}>📍 {profile.city}</div>}
         {profile?.bio && <div style={{ fontSize: 12, color: C.textMuted, textAlign: "center", maxWidth: 260 }}>{profile.bio}</div>}

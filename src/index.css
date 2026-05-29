@@ -1,2 +1,17 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0d0d15; }
+body { background: #0d0d15; -webkit-font-smoothing: antialiased; }
+input, button { font-family: inherit; }
+::-webkit-scrollbar { width: 0; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.fade-up { animation: fadeUp 0.35s ease forwards; }
+.pulse { animation: pulse 1.5s ease infinite; }

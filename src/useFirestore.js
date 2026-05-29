@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   collection, doc, setDoc, getDoc, onSnapshot,
-  addDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp
+  addDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, serverTimestamp
 } from "firebase/firestore";
 import { db } from "./firebase";
 
-// ── Profil utilisateur ──────────────────────────────────────────
 export function useProfile(user) {
   const [profile, setProfile] = useState(null);
-
   useEffect(() => {
     if (!user) return;
     const ref = doc(db, "users", user.uid);
@@ -17,9 +15,7 @@ export function useProfile(user) {
         const init = { name: user.displayName || "Utilisateur", city: "", bio: "", photo: user.photoURL || null, uid: user.uid };
         setDoc(ref, init);
         setProfile(init);
-      } else {
-        setProfile(snap.data());
-      }
+      } else setProfile(snap.data());
     });
   }, [user]);
 
@@ -31,15 +27,12 @@ export function useProfile(user) {
     await setDoc(doc(db, "users", user.uid), toSave, { merge: true });
     setProfile({ ...data });
   };
-
   return [profile, saveProfile];
 }
 
-// ── Profil d'un autre utilisateur ───────────────────────────────
 export function useUserProfile(uid) {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     if (!uid) return;
     setLoading(true);
@@ -48,52 +41,43 @@ export function useUserProfile(uid) {
       setLoading(false);
     });
   }, [uid]);
-
   return [userProfile, loading];
 }
 
-// ── Events ──────────────────────────────────────────────────────
 export function useEvents(user) {
   const [events, setEvents] = useState([]);
-
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(collection(db, "events"), snap => {
       const now = new Date();
       const evs = snap.docs.map(d => {
         const data = { id: d.id, ...d.data() };
-        // Auto-marquer comme terminé si la date est passée
         if (data.dateISO && !data.ended) {
           const eventDate = new Date(data.dateISO);
-          if (eventDate < now) {
-            updateDoc(doc(db, "events", d.id), { ended: true });
-            data.ended = true;
-          }
+          if (eventDate < now) { updateDoc(doc(db, "events", d.id), { ended: true }); data.ended = true; }
         }
         return data;
       });
-      // Trier par date — les plus proches en premier
-      evs.sort((a, b) => {
-        if (!a.dateISO) return 1;
-        if (!b.dateISO) return -1;
-        return new Date(a.dateISO) - new Date(b.dateISO);
-      });
+      evs.sort((a, b) => { if (!a.dateISO) return 1; if (!b.dateISO) return -1; return new Date(a.dateISO) - new Date(b.dateISO); });
       setEvents(evs);
     });
     return unsub;
   }, [user]);
 
   const createEvent = async (form) => {
-    await addDoc(collection(db, "events"), {
-      ...form,
-      organizer: user.uid,
-      organizerName: user.displayName || "Utilisateur",
-      participants: [user.uid],
-      requests: [],
-      photos: [],
-      ended: false,
-      createdAt: serverTimestamp(),
-    });
+    await addDoc(collection(db, "events"), { ...form, organizer: user.uid, organizerName: user.displayName || "Utilisateur", participants: [user.uid], requests: [], photos: [], announcements: [], ended: false, createdAt: serverTimestamp() });
+  };
+
+  const updateEvent = async (eventId, data) => {
+    await updateDoc(doc(db, "events", eventId), data);
+  };
+
+  const endEvent = async (eventId) => {
+    await updateDoc(doc(db, "events", eventId), { ended: true });
+  };
+
+  const deleteEvent = async (eventId) => {
+    await deleteDoc(doc(db, "events", eventId));
   };
 
   const requestJoin = async (eventId) => {
@@ -101,10 +85,7 @@ export function useEvents(user) {
   };
 
   const acceptRequest = async (eventId, userId) => {
-    await updateDoc(doc(db, "events", eventId), {
-      participants: arrayUnion(userId),
-      requests: arrayRemove(userId),
-    });
+    await updateDoc(doc(db, "events", eventId), { participants: arrayUnion(userId), requests: arrayRemove(userId) });
   };
 
   const declineRequest = async (eventId, userId) => {
@@ -115,13 +96,16 @@ export function useEvents(user) {
     await updateDoc(doc(db, "events", eventId), { photos: arrayUnion(photoData) });
   };
 
-  return { events, createEvent, requestJoin, acceptRequest, declineRequest, addPhoto };
+  const sendAnnouncement = async (eventId, text) => {
+    const ann = { text, time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), date: new Date().toLocaleDateString("fr-FR") };
+    await updateDoc(doc(db, "events", eventId), { announcements: arrayUnion(ann) });
+  };
+
+  return { events, createEvent, updateEvent, endEvent, deleteEvent, requestJoin, acceptRequest, declineRequest, addPhoto, sendAnnouncement };
 }
 
-// ── Messages ────────────────────────────────────────────────────
 export function useMessages(user) {
   const [messages, setMessages] = useState({});
-
   const getConvId = (uid1, uid2) => [uid1, uid2].sort().join("_");
 
   const listenConv = (friendId) => {
@@ -135,21 +119,14 @@ export function useMessages(user) {
 
   const sendMessage = async (friendId, text) => {
     const convId = getConvId(user.uid, friendId);
-    await addDoc(collection(db, "conversations", convId, "messages"), {
-      from: user.uid,
-      text,
-      time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      createdAt: serverTimestamp(),
-    });
+    await addDoc(collection(db, "conversations", convId, "messages"), { from: user.uid, text, time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), createdAt: serverTimestamp() });
   };
 
   return { messages, listenConv, sendMessage };
 }
 
-// ── Amis ────────────────────────────────────────────────────────
 export function useFriends(user) {
   const [friends, setFriends] = useState([]);
-
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(doc(db, "users", user.uid), snap => {

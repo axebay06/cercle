@@ -1,71 +1,98 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  collection, doc, setDoc, getDoc, onSnapshot,
-  addDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, serverTimestamp
+  doc, collection, onSnapshot, setDoc, updateDoc,
+  arrayUnion, arrayRemove, addDoc, deleteDoc, serverTimestamp, getDoc,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
+// ─── useProfile ────────────────────────────────────────────────
 export function useProfile(user) {
   const [profile, setProfile] = useState(null);
+
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
     const ref = doc(db, "users", user.uid);
-    getDoc(ref).then(snap => {
-      if (!snap.exists()) {
-        const init = { name: user.displayName || "Utilisateur", city: "", bio: "", photo: user.photoURL || null, uid: user.uid };
-        setDoc(ref, init);
-        setProfile(init);
-      } else setProfile(snap.data());
+    const unsub = onSnapshot(ref, snap => {
+      if (snap.exists()) {
+        setProfile(snap.data());
+      } else {
+        const defaultProfile = { name: user.displayName || "", photo: user.photoURL || "", city: "", bio: "", uid: user.uid };
+        setDoc(ref, defaultProfile);
+        setProfile(defaultProfile);
+      }
     });
-  }, [user]);
+    return unsub;
+  }, [user?.uid]);
 
   const saveProfile = async (data) => {
-    if (!user) return;
+    if (!user?.uid) return;
     const { photo, ...rest } = data;
     const toSave = { ...rest, uid: user.uid };
     if (photo && photo.length < 900000) toSave.photo = photo;
     await setDoc(doc(db, "users", user.uid), toSave, { merge: true });
-    setProfile({ ...data });
   };
+
   return [profile, saveProfile];
 }
 
+// ─── useUserProfile ────────────────────────────────────────────
 export function useUserProfile(uid) {
-  const [userProfile, setUserProfile] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    if (!uid) return;
-    setLoading(true);
-    getDoc(doc(db, "users", uid)).then(snap => {
-      setUserProfile(snap.exists() ? snap.data() : null);
+    if (!uid) { setLoading(false); return; }
+    const unsub = onSnapshot(doc(db, "users", uid), snap => {
+      setProfile(snap.exists() ? snap.data() : null);
       setLoading(false);
     });
+    return unsub;
   }, [uid]);
-  return [userProfile, loading];
+
+  return [profile, loading];
 }
 
+// ─── useEvents ─────────────────────────────────────────────────
 export function useEvents(user) {
   const [events, setEvents] = useState([]);
+
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
     const unsub = onSnapshot(collection(db, "events"), snap => {
       const now = new Date();
-      const evs = snap.docs.map(d => {
+      const list = snap.docs.map(d => {
         const data = { id: d.id, ...d.data() };
-        if (data.dateISO && !data.ended) {
-          const eventDate = new Date(data.dateISO);
-          if (eventDate < now) { updateDoc(doc(db, "events", d.id), { ended: true }); data.ended = true; }
+        if (data.dateISO && !data.ended && new Date(data.dateISO) < now) {
+          updateDoc(doc(db, "events", d.id), { ended: true });
+          data.ended = true;
         }
         return data;
       });
-      evs.sort((a, b) => { if (!a.dateISO) return 1; if (!b.dateISO) return -1; return new Date(a.dateISO) - new Date(b.dateISO); });
-      setEvents(evs);
+      list.sort((a, b) => {
+        if (!a.dateISO) return 1;
+        if (!b.dateISO) return -1;
+        return a.dateISO.localeCompare(b.dateISO);
+      });
+      setEvents(list);
     });
     return unsub;
-  }, [user]);
+  }, [user?.uid]);
 
-  const createEvent = async (form) => {
-    await addDoc(collection(db, "events"), { ...form, organizer: user.uid, organizerName: user.displayName || "Utilisateur", participants: [user.uid], requests: [], photos: [], announcements: [], ended: false, createdAt: serverTimestamp() });
+  const createEvent = async (data) => {
+    if (!user?.uid) return;
+    const userSnap = await getDoc(doc(db, "users", user.uid));
+    const organizerName = userSnap.exists() ? (userSnap.data().name || "") : (user.displayName || "");
+    await addDoc(collection(db, "events"), {
+      ...data,
+      organizer: user.uid,
+      organizerName,
+      participants: [user.uid],
+      requests: [],
+      photos: [],
+      announcements: [],
+      ended: false,
+      createdAt: serverTimestamp(),
+    });
   };
 
   const updateEvent = async (eventId, data) => {
@@ -81,62 +108,67 @@ export function useEvents(user) {
   };
 
   const requestJoin = async (eventId) => {
+    if (!user?.uid) return;
     await updateDoc(doc(db, "events", eventId), { requests: arrayUnion(user.uid) });
   };
 
-  const acceptRequest = async (eventId, userId) => {
-    await updateDoc(doc(db, "events", eventId), { participants: arrayUnion(userId), requests: arrayRemove(userId) });
+  const acceptRequest = async (eventId, uid) => {
+    await updateDoc(doc(db, "events", eventId), { participants: arrayUnion(uid), requests: arrayRemove(uid) });
   };
 
-  const declineRequest = async (eventId, userId) => {
-    await updateDoc(doc(db, "events", eventId), { requests: arrayRemove(userId) });
+  const declineRequest = async (eventId, uid) => {
+    await updateDoc(doc(db, "events", eventId), { requests: arrayRemove(uid) });
   };
 
-  const addPhoto = async (eventId, photoData) => {
-    await updateDoc(doc(db, "events", eventId), { photos: arrayUnion(photoData) });
+  const addPhoto = async (eventId, dataUrl) => {
+    await updateDoc(doc(db, "events", eventId), { photos: arrayUnion(dataUrl) });
   };
 
   const sendAnnouncement = async (eventId, text) => {
-    const ann = { text, time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), date: new Date().toLocaleDateString("fr-FR") };
+    const ann = {
+      text,
+      time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      date: new Date().toLocaleDateString("fr-FR"),
+    };
     await updateDoc(doc(db, "events", eventId), { announcements: arrayUnion(ann) });
   };
 
   return { events, createEvent, updateEvent, endEvent, deleteEvent, requestJoin, acceptRequest, declineRequest, addPhoto, sendAnnouncement };
 }
 
-export function useMessages(user) {
-  const [messages, setMessages] = useState({});
-  const getConvId = (uid1, uid2) => [uid1, uid2].sort().join("_");
-
-  const listenConv = (friendId) => {
-    const convId = getConvId(user.uid, friendId);
-    const unsub = onSnapshot(collection(db, "conversations", convId, "messages"), snap => {
-      const msgs = snap.docs.map(d => d.data()).sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
-      setMessages(prev => ({ ...prev, [friendId]: msgs }));
-    });
-    return unsub;
-  };
-
-  const sendMessage = async (friendId, text) => {
-    const convId = getConvId(user.uid, friendId);
-    await addDoc(collection(db, "conversations", convId, "messages"), { from: user.uid, text, time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), createdAt: serverTimestamp() });
-  };
-
-  return { messages, listenConv, sendMessage };
-}
-
+// ─── useFriends ────────────────────────────────────────────────
 export function useFriends(user) {
   const [friends, setFriends] = useState([]);
+
   useEffect(() => {
-    if (!user) return;
-    const unsub = onSnapshot(doc(db, "users", user.uid), snap => {
-      if (snap.exists()) setFriends(snap.data().friends || []);
+    if (!user?.uid) return;
+    const ref = doc(db, "friends", user.uid);
+    const unsub = onSnapshot(ref, async snap => {
+      if (!snap.exists()) { setFriends([]); return; }
+      const uids = snap.data().list || [];
+      if (uids.length === 0) { setFriends([]); return; }
+      const profiles = await Promise.all(
+        uids.map(async uid => {
+          const pSnap = await getDoc(doc(db, "users", uid));
+          return pSnap.exists() ? { uid, ...pSnap.data() } : { uid, name: uid, photo: "" };
+        })
+      );
+      setFriends(profiles);
     });
     return unsub;
-  }, [user]);
+  }, [user?.uid]);
 
-  const addFriend = async (friendId) => {
-    await updateDoc(doc(db, "users", user.uid), { friends: arrayUnion(friendId) });
+  const addFriend = async (uid) => {
+    if (!user?.uid || uid === user.uid) return;
+    const ref = doc(db, "friends", user.uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) await setDoc(ref, { list: [uid] });
+    else await updateDoc(ref, { list: arrayUnion(uid) });
+    // Relation réciproque
+    const refOther = doc(db, "friends", uid);
+    const snapOther = await getDoc(refOther);
+    if (!snapOther.exists()) await setDoc(refOther, { list: [user.uid] });
+    else await updateDoc(refOther, { list: arrayUnion(user.uid) });
   };
 
   return { friends, addFriend };

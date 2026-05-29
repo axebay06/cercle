@@ -22,7 +22,15 @@ const s = {
   inp: { background: "#141422", border: `0.5px solid #28283e`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#e0dff5", width: "100%", outline: "none", marginTop: 4 },
 };
 
-const formatDateFR = iso => { if (!iso) return ""; return new Date(iso).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" }); };
+const getInitials = (name) => {
+  if (!name) return "?";
+  return name.trim().split(/\s+/).map(w => w[0]).join("").toUpperCase().slice(0, 2);
+};
+
+const formatDateFR = iso => {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" });
+};
 
 const GradientText = ({ children, size = 20 }) => (
   <span style={{ fontWeight: 700, fontSize: size, letterSpacing: "-0.5px", background: `linear-gradient(135deg, ${C.gradStart}, ${C.gradEnd})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{children}</span>
@@ -61,7 +69,7 @@ const SpotDots = ({ filled, total }) => (
     {Array.from({ length: Math.min(total, 10) }).map((_, i) => (
       <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i < filled ? C.accent : "#2a2a3e", display: "inline-block" }} />
     ))}
-    <span style={{ fontSize: 10, color: C.textDim, marginLeft: 4 }}>{filled}/{total}</span>
+    <span style={{ fontSize: 10, color: C.textDim, marginLeft: 4, fontWeight: 500 }}>{filled}/{total}</span>
   </div>
 );
 
@@ -87,21 +95,20 @@ const BottomNav = ({ tab, setTab }) => {
 };
 
 // ── Panel notifications ─────────────────────────────────────────
-const NotifsPanel = ({ events, myUid, onAccept, onDecline, onClose, onOpen }) => {
-  const myEvents = events.filter(e => e.organizer === myUid);
-  const pending = myEvents.flatMap(ev => (ev.requests || []).map(uid => ({ ev, uid })));
+const NotifsPanel = ({ events, myUid, onAccept, onDecline, onClose }) => {
+  const pending = events
+    .filter(e => e.organizer === myUid)
+    .flatMap(ev => (ev.requests || []).map(uid => ({ ev, uid })));
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }} />
       <div style={{ position: "relative", background: C.surface, borderRadius: "20px 20px 0 0", padding: "20px 16px 32px", maxHeight: "70vh", overflowY: "auto", border: `0.5px solid ${C.cardBorder}` }}>
         <div style={{ width: 36, height: 4, borderRadius: 2, background: C.cardBorder, margin: "0 auto 16px" }} />
         <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }}>🔔 Notifications</div>
-        {pending.length === 0 && (
-          <div style={{ textAlign: "center", padding: "20px 0", color: C.textDim, fontSize: 13 }}>Aucune notification pour l'instant</div>
-        )}
+        {pending.length === 0 && <div style={{ textAlign: "center", padding: "20px 0", color: C.textDim, fontSize: 13 }}>Aucune notification pour l'instant</div>}
         {pending.map(({ ev, uid }, i) => (
           <div key={i} style={{ background: C.card, border: `0.5px solid ${C.cardBorder}`, borderRadius: 14, padding: 14, marginBottom: 10 }}>
-            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 4 }}>{ev.title}</div>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>{ev.title}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
               <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600 }}>{uid.slice(0, 2).toUpperCase()}</div>
               <div>
@@ -126,35 +133,17 @@ const ManageCircleScreen = ({ ev, onBack, onUpdate, onEnd, onDelete, showToast }
   const [confirming, setConfirming] = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const save = async () => {
-    await onUpdate(ev.id, { ...form, date: formatDateFR(form.dateISO) });
-    showToast("✅ Cercle mis à jour !");
-    onBack();
-  };
-
-  const handleEnd = async () => {
-    await onEnd(ev.id);
-    showToast("🎉 Cercle terminé — les souvenirs sont maintenant accessibles !");
-    onBack();
-  };
-
-  const handleDelete = async () => {
-    await onDelete(ev.id);
-    showToast("🗑 Cercle supprimé");
-    onBack();
-  };
-
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div style={s.header}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
         <GradientText size={15}>Gérer le cercle</GradientText>
       </div>
-      <div style={{ padding: "16px 16px" }}>
-        {[["Titre", "title", "text", "Soirée bowling..."], ["Lieu", "location", "text", "Paris 11e..."]].map(([label, key, type, ph]) => (
+      <div style={{ padding: "16px" }}>
+        {[["Titre", "title", "Soirée bowling..."], ["Lieu", "location", "Paris 11e..."]].map(([label, key, ph]) => (
           <div key={key} style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, color: C.textDim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
-            <input value={form[key]} onChange={e => set(key, e.target.value)} placeholder={ph} type={type} style={s.inp} />
+            <input value={form[key]} onChange={e => set(key, e.target.value)} placeholder={ph} style={s.inp} />
           </div>
         ))}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
@@ -171,31 +160,26 @@ const ManageCircleScreen = ({ ev, onBack, onUpdate, onEnd, onDelete, showToast }
           <div style={{ fontSize: 11, color: C.textDim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Places max : <span style={{ color: C.accent }}>{form.maxSpots}</span></div>
           <input type="range" min={2} max={20} value={form.maxSpots} onChange={e => set("maxSpots", Number(e.target.value))} style={{ width: "100%", accentColor: C.accent }} />
         </div>
-        <Btn onClick={save} icon="💾">Enregistrer les modifications</Btn>
+        <Btn onClick={async () => { await onUpdate(ev.id, { ...form, date: formatDateFR(form.dateISO) }); showToast("✅ Modifications enregistrées !"); onBack(); }} icon="💾">Enregistrer</Btn>
         <div style={{ height: 1, background: C.divider, margin: "20px 0" }} />
-        <div style={{ fontSize: 11, color: C.textDim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Actions</div>
         {confirming === "end" ? (
           <div style={{ background: C.card, border: `0.5px solid ${C.cardBorder}`, borderRadius: 12, padding: 14, marginBottom: 8 }}>
-            <div style={{ fontSize: 13, color: C.text, marginBottom: 10 }}>Terminer le cercle ? Les participants pourront partager des souvenirs.</div>
+            <div style={{ fontSize: 13, color: C.text, marginBottom: 10 }}>Terminer le cercle ? Les souvenirs seront accessibles.</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={handleEnd} style={{ flex: 1, background: C.success, color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Confirmer</button>
+              <button onClick={async () => { await onEnd(ev.id); showToast("🎉 Cercle terminé !"); onBack(); }} style={{ flex: 1, background: C.success, color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Confirmer</button>
               <button onClick={() => setConfirming(null)} style={{ flex: 1, background: C.card, color: C.textMuted, border: `0.5px solid ${C.cardBorder}`, borderRadius: 8, padding: "8px 0", fontSize: 12, cursor: "pointer" }}>Annuler</button>
             </div>
           </div>
-        ) : (
-          <Btn variant="warning" onClick={() => setConfirming("end")} icon="🎉">Terminer le cercle</Btn>
-        )}
+        ) : <Btn variant="warning" onClick={() => setConfirming("end")} icon="🎉">Terminer le cercle</Btn>}
         {confirming === "delete" ? (
           <div style={{ background: C.dangerDim, border: `0.5px solid #3a2020`, borderRadius: 12, padding: 14, marginTop: 8 }}>
-            <div style={{ fontSize: 13, color: C.danger, marginBottom: 10 }}>Supprimer définitivement ce cercle ?</div>
+            <div style={{ fontSize: 13, color: C.danger, marginBottom: 10 }}>Supprimer définitivement ?</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={handleDelete} style={{ flex: 1, background: C.danger, color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Supprimer</button>
+              <button onClick={async () => { await onDelete(ev.id); showToast("🗑 Cercle supprimé"); onBack(); }} style={{ flex: 1, background: C.danger, color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Supprimer</button>
               <button onClick={() => setConfirming(null)} style={{ flex: 1, background: C.card, color: C.textMuted, border: `0.5px solid ${C.cardBorder}`, borderRadius: 8, padding: "8px 0", fontSize: 12, cursor: "pointer" }}>Annuler</button>
             </div>
           </div>
-        ) : (
-          <Btn variant="danger" onClick={() => setConfirming("delete")} icon="🗑">Supprimer le cercle</Btn>
-        )}
+        ) : <Btn variant="danger" onClick={() => setConfirming("delete")} icon="🗑">Supprimer le cercle</Btn>}
       </div>
     </div>
   );
@@ -253,7 +237,7 @@ const FeedScreen = ({ events, onOpen, profile, myUid, notifCount, onOpenNotifs }
         </div>
       )}
       <div style={s.sectionLabel}>Cercles à venir</div>
-      {active.map((ev, i) => <EventCard key={ev.id} ev={ev} onOpen={onOpen} myUid={myUid} />)}
+      {active.map(ev => <EventCard key={ev.id} ev={ev} onOpen={onOpen} myUid={myUid} />)}
       {active.length === 0 && (
         <div style={{ padding: 40, textAlign: "center" }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>◎</div>
@@ -274,7 +258,7 @@ const MyEventsScreen = ({ events, onOpen, myUid }) => {
       <div style={{ ...s.header, justifyContent: "space-between" }}><Logo /></div>
       {upcoming.length > 0 && <><div style={s.sectionLabel}>À venir · {upcoming.length}</div>{upcoming.map(ev => <EventCard key={ev.id} ev={ev} onOpen={onOpen} myUid={myUid} />)}</>}
       {past.length > 0 && <><div style={{ ...s.sectionLabel, color: C.textDim }}>Mémoires · {past.length}</div>{past.map(ev => <EventCard key={ev.id} ev={ev} onOpen={onOpen} myUid={myUid} />)}</>}
-      {mine.length === 0 && <div style={{ padding: 40, textAlign: "center" }}><div style={{ fontSize: 40, marginBottom: 12 }}>📅</div><div style={{ fontSize: 14, fontWeight: 500, color: C.textMuted }}>Aucun cercle pour l'instant</div></div>}
+      {mine.length === 0 && <div style={{ padding: 40, textAlign: "center" }}><div style={{ fontSize: 40, marginBottom: 12 }}>📅</div><div style={{ fontSize: 14, color: C.textMuted }}>Aucun cercle pour l'instant</div></div>}
     </div>
   );
 };
@@ -295,17 +279,17 @@ const CreateScreen = ({ onCreate, onBack }) => {
         <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
         <GradientText size={16}>Créer un cercle</GradientText>
       </div>
-      <div style={{ padding: "16px 16px" }}>
+      <div style={{ padding: "16px" }}>
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>Ambiance</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {emojis.map(e => <button key={e} onClick={() => setEmoji(e)} style={{ fontSize: 22, background: emoji === e ? C.accentDim : "#141422", border: `1.5px solid ${emoji === e ? C.accent : "transparent"}`, borderRadius: 10, padding: "6px 10px", cursor: "pointer", transform: emoji === e ? "scale(1.1)" : "scale(1)", transition: "all 0.15s" }}>{e}</button>)}
           </div>
         </div>
-        {[["Titre", "title", "text", "Ex: Soirée bowling..."], ["Lieu", "location", "text", "Ex: Paris 11e..."]].map(([label, key, type, ph]) => (
+        {[["Titre", "title", "Ex: Soirée bowling..."], ["Lieu", "location", "Ex: Paris 11e..."]].map(([label, key, ph]) => (
           <div key={key} style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, color: C.textDim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
-            <input value={form[key]} onChange={e => set(key, e.target.value)} placeholder={ph} type={type} style={s.inp} />
+            <input value={form[key]} onChange={e => set(key, e.target.value)} placeholder={ph} style={s.inp} />
           </div>
         ))}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
@@ -340,14 +324,16 @@ const FriendsScreen = ({ onOpenConv, messages, friends, onAddFriend }) => (
     <div style={{ ...s.header, justifyContent: "space-between" }}><Logo /><span style={{ fontSize: 11, color: C.textDim }}>Messages</span></div>
     {friends.length > 0 && <>
       <div style={s.sectionLabel}>Amis · {friends.length}</div>
-      {friends.map(id => {
-        const msgs = messages[id] || [];
+      {friends.map(friend => {
+        const msgs = messages[friend.uid] || [];
         const last = msgs[msgs.length - 1];
         return (
-          <div key={id} onClick={() => onOpenConv(id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `0.5px solid ${C.divider}`, cursor: "pointer" }}>
-            <div style={{ width: 44, height: 44, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accentDim}, #1a1030)`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 600 }}>{id.slice(0, 2).toUpperCase()}</div>
+          <div key={friend.uid} onClick={() => onOpenConv(friend.uid)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `0.5px solid ${C.divider}`, cursor: "pointer" }}>
+            {friend.photo
+              ? <img src={friend.photo} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1.5px solid ${C.cardBorder}` }} />
+              : <div style={{ width: 44, height: 44, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accentDim}, #1a1030)`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 600 }}>{getInitials(friend.name)}</div>}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{id}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{friend.name || friend.uid}</div>
               <div style={{ fontSize: 11, color: C.textDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{last ? (last.from === "me" ? `Toi : ${last.text}` : last.text) : "Commencer une conversation"}</div>
             </div>
             {last && <span style={{ fontSize: 10, color: C.textDim }}>{last.time}</span>}
@@ -356,7 +342,7 @@ const FriendsScreen = ({ onOpenConv, messages, friends, onAddFriend }) => (
       })}
     </>}
     <div style={{ ...s.sectionLabel, color: C.textDim }}>Suggestions</div>
-    {SUGGESTED.filter(u => !friends.includes(u.id)).map(u => (
+    {SUGGESTED.filter(su => !friends.find(f => f.uid === su.id)).map(u => (
       <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `0.5px solid ${C.divider}` }}>
         <div style={{ width: 44, height: 44, borderRadius: "50%", background: u.bg, color: u.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 600 }}>{u.initials}</div>
         <div style={{ flex: 1 }}>
@@ -369,16 +355,16 @@ const FriendsScreen = ({ onOpenConv, messages, friends, onAddFriend }) => (
   </div>
 );
 
-const ConversationScreen = ({ friendId, onBack, messages, onSend }) => {
+const ConversationScreen = ({ friendId, friendName, onBack, messages, onSend }) => {
   const [input, setInput] = useState("");
   const send = () => { if (!input.trim()) return; onSend(friendId, input.trim()); setInput(""); };
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <div style={s.header}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button>
-        <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: C.accent }}>{friendId.slice(0, 2).toUpperCase()}</div>
+        <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: C.accent }}>{getInitials(friendName)}</div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{friendId}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{friendName || friendId}</div>
           <div style={{ fontSize: 10, color: C.success }}>● Dans ton cercle</div>
         </div>
       </div>
@@ -404,9 +390,10 @@ const ConversationScreen = ({ friendId, onBack, messages, onSend }) => {
   );
 };
 
-const EditProfileScreen = ({ profile, onSave, onBack }) => {
+const EditProfileScreen = ({ profile, onSave, onBack, user }) => {
   const [form, setForm] = useState({ ...profile });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const initials = getInitials(form.name || user?.displayName);
   const handlePhoto = e => {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
@@ -436,10 +423,11 @@ const EditProfileScreen = ({ profile, onSave, onBack }) => {
         <label style={{ cursor: "pointer", position: "relative" }}>
           {form.photo
             ? <img src={form.photo} alt="" style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover", border: `3px solid ${C.accent}` }} />
-            : <div style={{ width: 88, height: 88, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accentDim}, #1a1030)`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 700, border: `3px solid ${C.accent}` }}>AX</div>}
+            : <div style={{ width: 88, height: 88, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accentDim}, #1a1030)`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 700, border: `3px solid ${C.accent}` }}>{initials}</div>}
           <div style={{ position: "absolute", bottom: 2, right: 2, background: `linear-gradient(135deg, ${C.gradStart}, ${C.gradEnd})`, borderRadius: "50%", width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>📷</div>
           <input type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
         </label>
+        <span style={{ fontSize: 11, color: C.textDim }}>Appuie pour changer</span>
       </div>
       <div style={{ padding: "0 16px" }}>
         {[["Prénom", "name", "Ton prénom"], ["Ville", "city", "Paris..."], ["Bio", "bio", "Dis quelque chose..."]].map(([label, key, ph]) => (
@@ -455,6 +443,7 @@ const EditProfileScreen = ({ profile, onSave, onBack }) => {
 };
 
 const ProfileScreen = ({ events, profile, onEdit, user, myUid }) => {
+  const initials = getInitials(profile?.name || user?.displayName);
   const memories = events.filter(e => e.ended && (e.organizer === myUid || (e.participants || []).includes(myUid)));
   const totalCircles = events.filter(e => (e.participants || []).includes(myUid) || e.organizer === myUid).length;
   return (
@@ -463,7 +452,7 @@ const ProfileScreen = ({ events, profile, onEdit, user, myUid }) => {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, paddingBottom: 20 }}>
           {(profile?.photo || user?.photoURL)
             ? <img src={profile?.photo ?? user?.photoURL} alt="" style={{ width: 84, height: 84, borderRadius: "50%", objectFit: "cover", border: `3px solid ${C.accent}`, boxShadow: `0 0 0 4px ${C.accentDim}` }} />
-            : <div style={{ width: 84, height: 84, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accentDim}, #1a1030)`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 700, border: `3px solid ${C.accent}` }}>AX</div>}
+            : <div style={{ width: 84, height: 84, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accentDim}, #1a1030)`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 700, border: `3px solid ${C.accent}` }}>{initials}</div>}
           <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{profile?.name || user?.displayName}</div>
           {profile?.city && <div style={{ fontSize: 12, color: C.textDim }}>📍 {profile.city}</div>}
           {profile?.bio && <div style={{ fontSize: 12, color: C.textMuted, textAlign: "center", maxWidth: 260, lineHeight: 1.6 }}>{profile.bio}</div>}
@@ -498,8 +487,9 @@ const ProfileScreen = ({ events, profile, onEdit, user, myUid }) => {
 
 const UserProfileScreen = ({ uid, onBack, myUid, onAddFriend, friends, events }) => {
   const [userProfile, loading] = useUserProfile(uid);
-  const isFriend = friends.includes(uid);
+  const isFriend = friends.some(f => f.uid === uid);
   const commonEvents = events.filter(e => (e.participants || []).includes(uid) && (e.participants || []).includes(myUid));
+  const initials = getInitials(userProfile?.name);
   if (loading) return <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: C.accent, fontSize: 28 }}>◎</span></div>;
   if (!userProfile) return <div style={{ flex: 1 }}><div style={s.header}><button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer" }}>←</button><span style={{ color: C.text }}>Introuvable</span></div></div>;
   return (
@@ -511,7 +501,7 @@ const UserProfileScreen = ({ uid, onBack, myUid, onAddFriend, friends, events })
       <div style={{ background: `linear-gradient(180deg, #14142a, ${C.surface})`, padding: "24px 16px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
         {userProfile.photo
           ? <img src={userProfile.photo} alt="" style={{ width: 84, height: 84, borderRadius: "50%", objectFit: "cover", border: `3px solid ${C.accent}` }} />
-          : <div style={{ width: 84, height: 84, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accentDim}, #1a1030)`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 700 }}>{(userProfile.name || "?").slice(0, 2).toUpperCase()}</div>}
+          : <div style={{ width: 84, height: 84, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accentDim}, #1a1030)`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 700 }}>{initials}</div>}
         <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{userProfile.name}</div>
         {userProfile.city && <div style={{ fontSize: 12, color: C.textDim }}>📍 {userProfile.city}</div>}
         {userProfile.bio && <div style={{ fontSize: 12, color: C.textMuted, textAlign: "center", maxWidth: 260, lineHeight: 1.6 }}>{userProfile.bio}</div>}
@@ -564,9 +554,14 @@ const EventDetail = ({ ev, onBack, onAction, myUid, onViewProfile, onManage, sho
     e.target.value = "";
   };
 
-  const handleJoin = async () => {
-    await onAction("request", ev.id, myUid);
-    showToast("✅ Demande envoyée !");
+  const handleShare = () => {
+    const url = `${window.location.origin}/event/${ev.id}`;
+    if (navigator.share) {
+      navigator.share({ title: ev.title, text: `Rejoins mon cercle : ${ev.title}`, url });
+    } else {
+      navigator.clipboard.writeText(url);
+      showToast("🔗 Lien copié !");
+    }
   };
 
   const handleSendAnn = async () => {
@@ -580,8 +575,15 @@ const EventDetail = ({ ev, onBack, onAction, myUid, onViewProfile, onManage, sho
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div style={{ background: `linear-gradient(180deg, #14142a, ${C.surface})`, padding: "16px 16px 20px" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: C.accent, fontSize: 18, cursor: "pointer", marginBottom: 12 }}>←</button>
-        <div style={{ fontSize: 24, marginBottom: 8 }}>{ev.emoji}</div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 12 }}>{ev.title}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>{ev.emoji}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 12 }}>{ev.title}</div>
+          </div>
+          <button onClick={handleShare} style={{ background: C.accentDim, border: `0.5px solid ${C.cardBorder}`, borderRadius: 10, padding: "8px 12px", color: C.accentLight, fontSize: 12, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            🔗 Partager
+          </button>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {[["📅", `${ev.date || formatDateFR(ev.dateISO)}${ev.time ? ` à ${ev.time}` : ""}`], ["📍", ev.location], ["👥", `${participants.length} / ${ev.maxSpots} participants`], ["👤", `Organisé par ${ev.organizerName || "..."}`]].map(([icon, text]) => (
             <div key={text} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -658,7 +660,7 @@ const EventDetail = ({ ev, onBack, onAction, myUid, onViewProfile, onManage, sho
                   ))}
                 </div>
               )}
-              <input value={annText} onChange={e => setAnnText(e.target.value)} placeholder="Ex: RDV métro Oberkampf à 19h45..." style={{ ...s.inp, marginTop: 0 }} onKeyDown={e => e.key === "Enter" && handleSendAnn()} />
+              <input value={annText} onChange={e => setAnnText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSendAnn()} placeholder="Ex: RDV métro Oberkampf à 19h45..." style={{ ...s.inp, marginTop: 0 }} />
               <Btn variant="secondary" onClick={handleSendAnn} disabled={!annText.trim()}>Envoyer à tous</Btn>
             </div>
           )}
@@ -676,7 +678,11 @@ const EventDetail = ({ ev, onBack, onAction, myUid, onViewProfile, onManage, sho
             <span style={{ fontSize: 20 }}>🔒</span>
             <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.6 }}>Discussion disponible <span style={{ color: C.accentLight, fontWeight: 500 }}>après la sortie</span>.<br />Souvenirs · photos · moments.</div>
           </div>
-          {!isOrganizer && !isParticipant && !hasRequested && !isFull && <Btn onClick={handleJoin}>Rejoindre le cercle · {ev.maxSpots - participants.length} place{ev.maxSpots - participants.length > 1 ? "s" : ""}</Btn>}
+          {!isOrganizer && !isParticipant && !hasRequested && !isFull && (
+            <Btn onClick={async () => { await onAction("request", ev.id, myUid); showToast("✅ Demande envoyée !"); }}>
+              Rejoindre · {ev.maxSpots - participants.length} place{ev.maxSpots - participants.length > 1 ? "s" : ""}
+            </Btn>
+          )}
           {hasRequested && <Btn variant="ghost">Demande envoyée ⏳</Btn>}
           {isParticipant && !isOrganizer && <Btn variant="ghost">Tu es dans ce cercle ✓</Btn>}
           {isOrganizer && <Btn variant="secondary" onClick={() => onManage(ev)} icon="⚙️">Gérer le cercle</Btn>}
@@ -688,10 +694,15 @@ const EventDetail = ({ ev, onBack, onAction, myUid, onViewProfile, onManage, sho
 };
 
 export default function App({ user }) {
-  const [tab, setTab] = useState("feed");
+  const [navStack, setNavStack] = useState(["feed"]);
+  const tab = navStack[navStack.length - 1];
+  const navigate = (t) => setNavStack(s => [...s, t]);
+  const goBack = () => setNavStack(s => s.length > 1 ? s.slice(0, -1) : s);
+  const setTab = (t) => setNavStack([t]);
+
   const [selected, setSelected] = useState(null);
-  const [prevTab, setPrevTab] = useState("feed");
   const [activeConv, setActiveConv] = useState(null);
+  const [activeFriend, setActiveFriend] = useState(null);
   const [messages, setMessages] = useState({});
   const [viewingUid, setViewingUid] = useState(null);
   const [managingEv, setManagingEv] = useState(null);
@@ -703,10 +714,12 @@ export default function App({ user }) {
   const { friends, addFriend } = useFriends(user);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
-
   const notifCount = events.filter(e => e.organizer === user.uid).reduce((acc, ev) => acc + (ev.requests || []).length, 0);
 
-  const handleOpen = ev => { setPrevTab(tab); setSelected(ev); setTab("detail"); };
+  // selected dérivé depuis events pour rester synchronisé
+  const selectedEvent = selected ? (events.find(e => e.id === selected.id) ?? selected) : null;
+
+  const handleOpen = ev => { setSelected(ev); navigate("detail"); };
 
   const handleAction = async (type, evId, payload) => {
     if (type === "request") await requestJoin(evId);
@@ -714,15 +727,6 @@ export default function App({ user }) {
     if (type === "decline") await declineRequest(evId, payload);
     if (type === "photo") await addPhoto(evId, payload);
     if (type === "announce") await sendAnnouncement(evId, payload);
-    setSelected(prev => {
-      if (!prev || prev.id !== evId) return prev;
-      if (type === "request") return { ...prev, requests: [...(prev.requests || []), payload] };
-      if (type === "accept") return { ...prev, participants: [...(prev.participants || []), payload], requests: (prev.requests || []).filter(r => r !== payload) };
-      if (type === "decline") return { ...prev, requests: (prev.requests || []).filter(r => r !== payload) };
-      if (type === "photo") return { ...prev, photos: [...(prev.photos || []), payload] };
-      if (type === "announce") return { ...prev, announcements: [...(prev.announcements || []), { text: payload, time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), date: new Date().toLocaleDateString("fr-FR") }] };
-      return prev;
-    });
   };
 
   const handleSend = (friendId, text) => {
@@ -731,10 +735,22 @@ export default function App({ user }) {
     setMessages(prev => ({ ...prev, [friendId]: [...(prev[friendId] || []), { from: "me", text, time }] }));
   };
 
-  const openConv = id => { setActiveConv(id); setTab("conv"); };
-  const viewProfile = uid => { setPrevTab(tab); setViewingUid(uid); setTab("userprofile"); };
+  const openConv = (uid) => {
+    const friend = friends.find(f => f.uid === uid);
+    setActiveConv(uid);
+    setActiveFriend(friend || { uid, name: uid });
+    navigate("conv");
+  };
 
-  if (!profile) return <div style={{ background: "#0d0d15", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#7b6fe8", fontSize: 36 }}>◎</span></div>;
+  const viewProfile = (uid) => { setViewingUid(uid); navigate("userprofile"); };
+
+  if (!profile) return (
+    <div style={{ background: "#0d0d15", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ color: "#7b6fe8", fontSize: 36 }}>◎</span>
+    </div>
+  );
+
+  const hiddenNav = ["detail", "create", "conv", "editprofile", "userprofile", "manage"];
 
   return (
     <div style={s.app}>
@@ -746,25 +762,25 @@ export default function App({ user }) {
           onClose={() => setShowNotifs(false)} />
       )}
       {tab === "manage" && managingEv
-        ? <ManageCircleScreen ev={managingEv} onBack={() => { setTab("detail"); }} onUpdate={updateEvent} onEnd={async (id) => { await endEvent(id); setTab(prevTab); setSelected(null); }} onDelete={async (id) => { await deleteEvent(id); setTab(prevTab); setSelected(null); }} showToast={showToast} />
+        ? <ManageCircleScreen ev={managingEv} onBack={() => { setManagingEv(null); goBack(); }} onUpdate={updateEvent} onEnd={async (id) => { await endEvent(id); setTab("feed"); setSelected(null); }} onDelete={async (id) => { await deleteEvent(id); setTab("feed"); setSelected(null); }} showToast={showToast} />
         : tab === "conv" && activeConv
-        ? <ConversationScreen friendId={activeConv} onBack={() => { setTab("friends"); setActiveConv(null); }} messages={messages[activeConv] || []} onSend={handleSend} />
+        ? <ConversationScreen friendId={activeConv} friendName={activeFriend?.name} onBack={() => { goBack(); setActiveConv(null); setActiveFriend(null); }} messages={messages[activeConv] || []} onSend={handleSend} />
         : tab === "editprofile"
-        ? <EditProfileScreen profile={profile} onSave={saveProfile} onBack={() => setTab("profile")} />
+        ? <EditProfileScreen profile={profile} onSave={saveProfile} onBack={goBack} user={user} />
         : tab === "userprofile" && viewingUid
-        ? <UserProfileScreen uid={viewingUid} onBack={() => { setTab(prevTab); setViewingUid(null); }} myUid={user.uid} onAddFriend={addFriend} friends={friends} events={events} />
-        : tab === "detail" && selected
-        ? <EventDetail ev={selected} onBack={() => { setTab(prevTab); setSelected(null); }} onAction={handleAction} myUid={user.uid} onViewProfile={viewProfile} showToast={showToast}
-            onManage={ev => { setManagingEv(ev); setTab("manage"); }} />
+        ? <UserProfileScreen uid={viewingUid} onBack={() => { goBack(); setViewingUid(null); }} myUid={user.uid} onAddFriend={addFriend} friends={friends} events={events} />
+        : tab === "detail" && selectedEvent
+        ? <EventDetail ev={selectedEvent} onBack={() => { goBack(); setSelected(null); }} onAction={handleAction} myUid={user.uid} onViewProfile={viewProfile} showToast={showToast}
+            onManage={ev => { setManagingEv(ev); navigate("manage"); }} />
         : tab === "create"
         ? <CreateScreen onCreate={createEvent} onBack={() => setTab("feed")} />
         : <>
           {tab === "feed" && <FeedScreen events={events} onOpen={handleOpen} profile={profile} myUid={user.uid} notifCount={notifCount} onOpenNotifs={() => setShowNotifs(true)} />}
           {tab === "myevents" && <MyEventsScreen events={events} onOpen={handleOpen} myUid={user.uid} />}
           {tab === "friends" && <FriendsScreen onOpenConv={openConv} messages={messages} friends={friends} onAddFriend={addFriend} />}
-          {tab === "profile" && <ProfileScreen events={events} profile={profile} onEdit={() => setTab("editprofile")} user={user} myUid={user.uid} />}
+          {tab === "profile" && <ProfileScreen events={events} profile={profile} onEdit={() => navigate("editprofile")} user={user} myUid={user.uid} />}
         </>}
-      {!["detail", "create", "conv", "editprofile", "userprofile", "manage"].includes(tab) && <BottomNav tab={tab} setTab={setTab} />}
+      {!hiddenNav.includes(tab) && <BottomNav tab={tab} setTab={setTab} />}
     </div>
   );
 }
